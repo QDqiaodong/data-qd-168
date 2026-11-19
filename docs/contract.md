@@ -1,0 +1,7 @@
+# Locale bundle contract v1
+
+A localization maintainer provides default_locale, catalogs, fallback and requested. Locale names are opaque nonblank identifiers (not a BCP-47 normalizer). Each locale maps message keys to {value,variables}; variables declares exactly the named placeholders appearing in value, with types string or integer. Repeated placeholders are legal; escaped braces are literals. Only Python-format simple identifier fields such as {name} are permitted; positional fields, attribute/index access, conversions, format specs and unmatched braces fail. Literal empty strings are valid translated messages and do not trigger fallback.
+
+Default catalog must be nonempty. All keys and variable type maps in translations must agree with the default. Fallback is a single-parent directed graph between declared locales; default has no parent. Missing explicit parent means the default. Cycles are rejected even if their locales are not requested. Every requested locale must exist and be unique. Compilation resolves every default key along the chain, saving source_locale and a diagnostic for each fallback. This is deterministic offline resource construction, not machine translation, plural-rule evaluation or ICU MessageFormat support.
+
+render(message, variables) validates the exact variable set and types before formatting. bool does not satisfy integer. Compilation validates the whole input before atomic publication. The sample resolves fr-CA greeting from fr, cart from fr-CA; rendering greeting with name=Ada yields Bonjour Ada.

@@ -1,0 +1,41 @@
+{
+  "default_locale": "en",
+  "fallback": {
+    "fr-CA": "fr"
+  },
+  "catalogs": {
+    "en": {
+      "greeting": {
+        "value": "Hello {name}",
+        "variables": {
+          "name": "string"
+        }
+      },
+      "cart": {
+        "value": "Items: {count}",
+        "variables": {
+          "count": "integer"
+        }
+      }
+    },
+    "fr": {
+      "greeting": {
+        "value": "Bonjour {name}",
+        "variables": {
+          "name": "string"
+        }
+      }
+    },
+    "fr-CA": {
+      "cart": {
+        "value": "Articles : {count}",
+        "variables": {
+          "count": "integer"
+        }
+      }
+    }
+  },
+  "requested": [
+    "fr-CA"
+  ]
+}
