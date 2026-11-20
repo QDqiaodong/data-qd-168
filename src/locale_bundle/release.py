@@ -33,7 +33,7 @@ def _application(row):
             'roots': _identifier_list(row['roots'], 'root component')}
 
 
-def _closure(application, components):
+def component_closure(application, components):
     """Transitive component ids reachable from the application roots."""
     seen = set()
     stack = list(application['roots'])
@@ -46,29 +46,31 @@ def _closure(application, components):
     return seen
 
 
-def compile_release_bundles(data):
-    fields(data, 'default_locale fallback catalogs requested components applications')
-    default, catalogs, chains, requested = catalog_context(
-        data['default_locale'], data['fallback'], data['catalogs'], data['requested'])
+def validate_component_graph(components_value, applications_value, known_keys,
+                             key_origin='default catalog'):
+    """Validate the shared component/application graph against known keys.
 
-    components = [_component(row) for row in array(data['components'], COMPONENT_LIMIT)]
+    Returns (components, applications, by_id). The dependency graph must be
+    acyclic across the whole declared graph, even over components no
+    application reaches.
+    """
+    components = [_component(row) for row in array(components_value, COMPONENT_LIMIT)]
     component_ids = [component['id'] for component in components]
     if len(set(component_ids)) != len(component_ids):
         raise ValueError('duplicate component id')
     by_id = {component['id']: component for component in components}
-    applications = [_application(row) for row in array(data['applications'], APPLICATION_LIMIT)]
+    applications = [_application(row) for row in array(applications_value, APPLICATION_LIMIT)]
     application_ids = [application['id'] for application in applications]
     if len(set(application_ids)) != len(application_ids):
         raise ValueError('duplicate application id')
 
-    keyboard = set(catalogs[default])
     for component in components:
         for dependency in component['requires']:
             if dependency not in by_id:
                 raise ValueError('unknown component reference: ' + dependency)
         for key in component['keys']:
-            if key not in keyboard:
-                raise ValueError('component key missing from default catalog: ' + key)
+            if key not in known_keys:
+                raise ValueError('component key missing from ' + key_origin + ': ' + key)
     for application in applications:
         for root in application['roots']:
             if root not in by_id:
@@ -95,10 +97,20 @@ def compile_release_bundles(data):
             if not advanced:
                 state[node] = 'done'
                 stack.pop()
+    return components, applications, by_id
+
+
+def compile_release_bundles(data):
+    fields(data, 'default_locale fallback catalogs requested components applications')
+    default, catalogs, chains, requested = catalog_context(
+        data['default_locale'], data['fallback'], data['catalogs'], data['requested'])
+
+    components, applications, by_id = validate_component_graph(
+        data['components'], data['applications'], set(catalogs[default]))
 
     packages = []
     for application in applications:
-        closure = _closure(application, by_id)
+        closure = component_closure(application, by_id)
         included_by = {}
         for component_id in closure:
             for key in by_id[component_id]['keys']:

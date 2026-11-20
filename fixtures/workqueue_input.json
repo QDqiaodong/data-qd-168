@@ -1,0 +1,35 @@
+{
+  "default_locale": "en",
+  "locales": ["en", "fr"],
+  "fallback": {},
+  "requested": ["fr"],
+  "sources": [
+    {"id": "s1", "seq": 1, "effective": 0, "key": "greeting", "value": "Hello {name}", "variables": {"name": "string"}},
+    {"id": "s2", "seq": 6, "effective": 20, "key": "greeting", "value": "Hi {name}", "variables": {"name": "string"}}
+  ],
+  "translations": [
+    {"id": "t1", "seq": 2, "effective": 0, "locale": "fr", "key": "greeting", "source_id": "s1", "value": "Bonjour {name}", "variables": {"name": "string"}}
+  ],
+  "reviews": [
+    {"seq": 3, "effective": 10, "translation_id": "t1", "approved": true},
+    {"seq": 4, "effective": 12, "translation_id": "t1", "approved": false},
+    {"seq": 5, "effective": 14, "translation_id": "t1", "approved": true}
+  ],
+  "queries": [
+    {"id": "q1", "at": 0, "known_seq": 2},
+    {"id": "q2", "at": 10, "known_seq": 3},
+    {"id": "q3", "at": 12, "known_seq": 4},
+    {"id": "q4", "at": 14, "known_seq": 5},
+    {"id": "q5", "at": 20, "known_seq": 6}
+  ],
+  "components": [
+    {"id": "checkout", "requires": ["shared"], "keys": []},
+    {"id": "catalog", "requires": ["shared"], "keys": []},
+    {"id": "shared", "requires": [], "keys": ["greeting"]},
+    {"id": "b-ui", "requires": ["shared"], "keys": []}
+  ],
+  "applications": [
+    {"id": "app-a", "roots": ["checkout", "catalog"]},
+    {"id": "app-b", "roots": ["b-ui"]}
+  ]
+}

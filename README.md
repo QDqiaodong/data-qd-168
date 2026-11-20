@@ -53,3 +53,25 @@ uv pip check --python .venv/bin/python
 预期：`app-a`（根组件 checkout、catalog 共同依赖 shared）仅含 greeting/button/cart/key-x；key-x 在 fr-CA 下从 fr 解析一次，source_locale 为 fr，included_by 仅 shared，且仅一条回退诊断。`app-b`（根组件 admin）只含 settings，不含 key-x，其 fr-CA 从 en 回退。
 
 语义：应用包键集合 = 各根组件 `requires` 的传递闭包内所有组件声明的键并集；多路径到达或跨应用共享的组件与键在单个应用内只计一次，但一个应用的键不会泄漏到另一个应用的包。每个键仍按 v1 单父链逐键解析并记录 source_locale，回退诊断只覆盖该应用实际包含的键；每个消息与诊断都带 included_by，即闭包内直接声明该键的组件 id（去重排序）。组件依赖图必须无环，所有 id、依赖、根与键引用必须有效，组件的键必须存在于默认 catalog。全部输入和全部应用/语言包验证构建成功后才原子替换输出；失败退出 2 并保留旧输出，8MB 上限、重复 JSON 键/非有限数拒绝、输入输出区分与符号链接拒绝均与 v1 相同。
+
+## 离线派工台账
+
+`locale-bundle-work-queue` 为本地化负责人维护单操作者派工台账，保存在指定的本地 JSON 文件中，契约详见 [数据契约](docs/contract.md) 的 v4 部分。四个子命令：`sync`（按选定查询截止同步）、`assign`（分派译者）、`confirm`（负责人确认完成）、`query`（查询台账）。派工操作不修改审核事实或发布包。
+
+```sh
+.venv/bin/locale-bundle-work-queue sync --source fixtures/workqueue_input.json --ledger run/ledger.json --query q1
+.venv/bin/locale-bundle-work-queue assign --ledger run/ledger.json --locale fr --key greeting --source-id s1 --translator alice
+.venv/bin/locale-bundle-work-queue sync --source fixtures/workqueue_input.json --ledger run/ledger.json --query q2
+.venv/bin/locale-bundle-work-queue confirm --ledger run/ledger.json --locale fr --key greeting --source-id s1 --confirmer lead --translation-id t1 --review-seq 3
+.venv/bin/locale-bundle-work-queue query --ledger run/ledger.json
+```
+
+预期：q1 同步为 fr/greeting/s1 建一项待办（影响应用 app-a、app-b）；分派给 alice；q2 截止看到 t1 获批准入待确认；负责人凭查询所得证据 (t1, 3) 确认完成。
+
+语义：同步输入 = v2 审核历史 + v3 结构的 components/applications（应用列表是本次完整范围，可以为空；组件键必须存在于源事实中）。每个应用按根组件传递闭包计算实际使用的键，尚未在选定截止内生效的键不派工；语言范围是 requested 中的非默认语言，即使能回退到别的语言也检查该语言自己的译文是否获准。一个待办对应一个 (locale, key, source_id)，多路径引用或跨应用共享只建一项并记录影响应用集合；每次同步显式选择一个 query_id，其 at/known_seq 不得小于台账最后接受的值，任一回退拒绝且台账不变。同一查询、截止、范围及任务相关事实均无变化的重跑（含重排等价输入）不追加审计、不建任务、不覆盖人工动作；只有有变化的成功同步才记录所用查询和截止。已有待办的译文获准时进入待确认，负责人凭查询所得的 translation_id、review_seq 确认；撤销会重开同一任务并保留译者与旧确认审计，旧批准证据不能确认后来重新获准的译文。源修订被替换时归档旧任务（保留负责人与确认审计），新修订未获准则新建未分派任务；对旧修订或退出范围任务的人工操作一律拒绝。首个成功的同步可以创建台账；坏输入、坏台账或被拒绝的操作退出 2 且旧文件保持原样。
+
+完整连续样例（应用退出/加回、撤销重开、修订替换归档）可离线运行：
+
+```sh
+.venv/bin/python examples/workqueue_demo.py
+```

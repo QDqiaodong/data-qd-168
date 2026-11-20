@@ -59,8 +59,48 @@ def _latest(rows, at, known_seq):
     return best
 
 
-def compile_reviewed_history(data):
-    fields(data, 'default_locale locales fallback requested sources translations reviews queries')
+def _current_sources(sources_by_key, at, known_seq):
+    """Current source revision per key at the cutoff; keys without any are absent."""
+    current = {}
+    for key, rows in sources_by_key.items():
+        latest = _latest(rows, at, known_seq)
+        if latest is not None:
+            current[key] = latest
+    return current
+
+
+def _slot_state(translations_by_slot, reviews_by_translation, locale, key, source_id, at, known_seq):
+    """Review state of one (locale, key) slot against the current source revision."""
+    row = {'locale': locale, 'key': key, 'translation_id': None,
+           'review_seq': None, 'state': 'missing'}
+    translation = _latest(translations_by_slot.get((locale, key), ()), at, known_seq)
+    if translation is not None:
+        review = _latest(reviews_by_translation.get(translation['id'], ()), at, known_seq)
+        row['translation_id'] = translation['id']
+        if review is not None:
+            row['review_seq'] = review['seq']
+        if translation['source_id'] != source_id:
+            row['state'] = 'stale_source'
+        elif review is None:
+            row['state'] = 'pending'
+        elif review['approved']:
+            row['state'] = 'approved'
+        else:
+            row['state'] = 'rejected'
+    return row
+
+
+def validate_fact_log(data, extra_fields=()):
+    """Validate the append-only fact log once and index it for per-query views.
+
+    extra_fields names additional tolerated top-level fields (used by the
+    work-queue sync, which layers components/applications onto this input).
+    Per-query cutoffs are not evaluated here; each query is derived on demand.
+    """
+    names = 'default_locale locales fallback requested sources translations reviews queries'
+    if extra_fields:
+        names += ' ' + ' '.join(extra_fields)
+    fields(data, names)
     default = text(data['default_locale'])
     locales = [text(locale) for locale in array(data['locales'], 100)]
     if len(set(locales)) != len(locales) or default not in locales:
@@ -136,68 +176,60 @@ def compile_reviewed_history(data):
         reviews_by_translation.setdefault(row['translation_id'], []).append(row)
 
     non_default = sorted(known - {default})
+    return {'default': default, 'chains': chains, 'requested': requested,
+            'non_default': non_default, 'queries': queries,
+            'sources_by_key': sources_by_key, 'translations_by_slot': translations_by_slot,
+            'reviews_by_translation': reviews_by_translation,
+            'translation_by_id': translation_by_id}
 
-    def view(query):
-        at, known_seq = query['at'], query['known_seq']
-        current = {}
-        for key, rows in sources_by_key.items():
-            latest = _latest(rows, at, known_seq)
-            if latest is not None:
-                current[key] = latest
-        if not current:
-            raise ValueError('query has no visible source revision: ' + query['id'])
-        keys = sorted(current)
-        states = {}
-        for locale in non_default:
-            for key in keys:
-                row = {'locale': locale, 'key': key, 'translation_id': None,
-                       'review_seq': None, 'state': 'missing'}
-                translation = _latest(translations_by_slot.get((locale, key), ()), at, known_seq)
-                if translation is not None:
-                    review = _latest(reviews_by_translation.get(translation['id'], ()), at, known_seq)
-                    row['translation_id'] = translation['id']
-                    if review is not None:
-                        row['review_seq'] = review['seq']
-                    if translation['source_id'] != current[key]['id']:
-                        row['state'] = 'stale_source'
-                    elif review is None:
-                        row['state'] = 'pending'
-                    elif review['approved']:
-                        row['state'] = 'approved'
-                    else:
-                        row['state'] = 'rejected'
-                states[(locale, key)] = row
-        catalogs = {}
-        fallback_messages = []
-        for locale in requested:
-            resolved = {}
-            for key in keys:
-                message = None
-                for parent in chains[locale]:
-                    if parent == default:
-                        source = current[key]
-                        message = {'value': source['value'], 'variables': dict(source['variables']),
-                                   'source_locale': default, 'source_id': source['id'],
-                                   'translation_id': None, 'review_seq': None}
-                        break
-                    state = states[(parent, key)]
-                    if state['state'] == 'approved':
-                        translation = translation_by_id[state['translation_id']]
-                        message = {'value': translation['value'],
-                                   'variables': dict(translation['variables']),
-                                   'source_locale': parent, 'source_id': current[key]['id'],
-                                   'translation_id': translation['id'],
-                                   'review_seq': state['review_seq']}
-                        break
-                resolved[key] = message
-                if message['source_locale'] != locale:
-                    fallback_messages.append({'locale': locale, 'key': key,
-                                              'source_locale': message['source_locale']})
-            catalogs[locale] = resolved
-        fallback_messages.sort(key=lambda row: (row['locale'], row['key']))
-        translation_states = [states[(locale, key)] for locale in non_default for key in keys]
-        return {'query_id': query['id'], 'at': at, 'known_seq': known_seq,
-                'default_locale': default, 'catalogs': catalogs,
-                'fallback_messages': fallback_messages, 'translation_states': translation_states}
 
-    return {'views': [view(query) for query in queries]}
+def query_view(ctx, query):
+    """Derive one historical catalog view from the facts visible at the cutoff."""
+    at, known_seq = query['at'], query['known_seq']
+    current = _current_sources(ctx['sources_by_key'], at, known_seq)
+    if not current:
+        raise ValueError('query has no visible source revision: ' + query['id'])
+    keys = sorted(current)
+    states = {}
+    for locale in ctx['non_default']:
+        for key in keys:
+            states[(locale, key)] = _slot_state(
+                ctx['translations_by_slot'], ctx['reviews_by_translation'],
+                locale, key, current[key]['id'], at, known_seq)
+    catalogs = {}
+    fallback_messages = []
+    for locale in ctx['requested']:
+        resolved = {}
+        for key in keys:
+            message = None
+            for parent in ctx['chains'][locale]:
+                if parent == ctx['default']:
+                    source = current[key]
+                    message = {'value': source['value'], 'variables': dict(source['variables']),
+                               'source_locale': ctx['default'], 'source_id': source['id'],
+                               'translation_id': None, 'review_seq': None}
+                    break
+                state = states[(parent, key)]
+                if state['state'] == 'approved':
+                    translation = ctx['translation_by_id'][state['translation_id']]
+                    message = {'value': translation['value'],
+                               'variables': dict(translation['variables']),
+                               'source_locale': parent, 'source_id': current[key]['id'],
+                               'translation_id': translation['id'],
+                               'review_seq': state['review_seq']}
+                    break
+            resolved[key] = message
+            if message['source_locale'] != locale:
+                fallback_messages.append({'locale': locale, 'key': key,
+                                          'source_locale': message['source_locale']})
+        catalogs[locale] = resolved
+    fallback_messages.sort(key=lambda row: (row['locale'], row['key']))
+    translation_states = [states[(locale, key)] for locale in ctx['non_default'] for key in keys]
+    return {'query_id': query['id'], 'at': at, 'known_seq': known_seq,
+            'default_locale': ctx['default'], 'catalogs': catalogs,
+            'fallback_messages': fallback_messages, 'translation_states': translation_states}
+
+
+def compile_reviewed_history(data):
+    ctx = validate_fact_log(data)
+    return {'views': [query_view(ctx, query) for query in ctx['queries']]}
