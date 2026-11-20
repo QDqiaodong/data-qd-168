@@ -1,0 +1,45 @@
+{
+  "default_locale": "en",
+  "locales": ["en", "fr", "fr-CA"],
+  "fallback": {
+    "fr-CA": "fr"
+  },
+  "requested": ["fr-CA"],
+  "sources": [
+    {"id": "s1", "seq": 1, "effective": 0, "key": "greeting", "value": "Hello {name}", "variables": {"name": "string"}},
+    {"id": "s2", "seq": 2, "effective": 0, "key": "settings", "value": "Settings", "variables": {}},
+    {"id": "s3", "seq": 5, "effective": 20, "key": "cart", "value": "Items", "variables": {}},
+    {"id": "s5", "seq": 8, "effective": 32, "key": "settings", "value": "Preferences", "variables": {}},
+    {"id": "s4", "seq": 11, "effective": 40, "key": "promo", "value": "Promo", "variables": {}}
+  ],
+  "translations": [
+    {"id": "t1", "seq": 3, "effective": 0, "locale": "fr", "key": "greeting", "source_id": "s1", "value": "Bonjour {name}", "variables": {"name": "string"}},
+    {"id": "t2", "seq": 6, "effective": 20, "locale": "fr", "key": "cart", "source_id": "s3", "value": "", "variables": {}},
+    {"id": "t3", "seq": 12, "effective": 40, "locale": "fr", "key": "promo", "source_id": "s4", "value": "Offre", "variables": {}}
+  ],
+  "reviews": [
+    {"seq": 4, "effective": 0, "translation_id": "t1", "approved": true},
+    {"seq": 7, "effective": 20, "translation_id": "t2", "approved": true},
+    {"seq": 9, "effective": 33, "translation_id": "t1", "approved": false},
+    {"seq": 10, "effective": 34, "translation_id": "t1", "approved": true},
+    {"seq": 13, "effective": 40, "translation_id": "t3", "approved": true}
+  ],
+  "queries": [
+    {"id": "q1", "at": 0, "known_seq": 4},
+    {"id": "q2", "at": 20, "known_seq": 7},
+    {"id": "q3-alt", "at": 32, "known_seq": 8},
+    {"id": "q3", "at": 34, "known_seq": 10},
+    {"id": "q4", "at": 40, "known_seq": 13}
+  ],
+  "components": [
+    {"id": "checkout", "requires": ["shared"], "keys": []},
+    {"id": "b-ui", "requires": ["shared"], "keys": []},
+    {"id": "shared", "requires": [], "keys": ["greeting"]},
+    {"id": "office", "requires": [], "keys": ["settings", "cart", "promo"]}
+  ],
+  "applications": [
+    {"id": "app-a", "roots": ["checkout"]},
+    {"id": "app-b", "roots": ["b-ui"]},
+    {"id": "app-c", "roots": ["office"]}
+  ]
+}

@@ -96,3 +96,25 @@ uv pip check --python .venv/bin/python
 ```sh
 .venv/bin/python examples/vendor_demo.py
 ```
+
+## 离线发布交付
+
+`locale-bundle-delivery` 把审核后的发布从总部送到可能数周离线的门店，契约详见 [数据契约](docs/contract.md) 的 v6 部分。总部两个命令：`build`（审核历史 + 组件/应用图 + 选定查询 + 正整数发布号 → 完整快照）与 `delta`（两份快照 → 一个增量文件）。门店六个命令：`init`（首个完整快照初始化）、`install`（安装增量）、`notice`（接收撤回通知）、`rollback`（回退到保留的上一套快照）、`status`（状态查询）、`fetch`（读取单个当前包）。不接入网络、供应商工作文件或派工台账；v1-v5 命令行为不变。
+
+```sh
+.venv/bin/locale-bundle-delivery build --source fixtures/delivery_input.json --output run/snap1.json --query q1 --release 1
+.venv/bin/locale-bundle-delivery build --source fixtures/delivery_input.json --output run/snap2.json --query q2 --release 2
+.venv/bin/locale-bundle-delivery delta --baseline run/snap1.json --target run/snap2.json --output run/delta12.json
+.venv/bin/locale-bundle-delivery init --store run/store.json --snapshot run/snap1.json
+.venv/bin/locale-bundle-delivery install --store run/store.json --delta run/delta12.json
+.venv/bin/locale-bundle-delivery status --store run/store.json
+.venv/bin/locale-bundle-delivery fetch --store run/store.json --application-id app-c --locale fr-CA
+```
+
+语义：快照以 `(application_id, locale)` 成包，只打入选定查询截止内已生效的键；每条文案记录当前源修订与实际供稿语言，非默认供稿保留精确的 `(translation_id, review_seq)`，默认供稿两者为空；空译文仍是译文。发布号、默认语言、包身份、键与文案连同供稿证据经规范化 JSON 的 SHA-256 确定 `snapshot_id`，事实、组件列表、根或对象字段的等价重排不改变身份。增量文件钉住精确基线与目标身份及目标发布号，覆盖该发布全部包；包与键可增删，文字未变但证据变化也算变化，未变条目的文案与相同证据不重传。门店以当前快照为唯一合法基线（被停用的当前快照仍是合法基线），目标发布号必须高于历史最高号；增量完整性、复原后的目标身份与撤回约束全部通过才原子切换整套当前快照，失败则原状态与已有输出不变。撤回通知是独立输入，按通知 ID 登记一组不得供应的精确批准，可先到、后到、乱序到或列出未安装过的证据；同 ID 同集合重复接收不改状态，同 ID 换集合整次拒绝；重新获准换用新审核序号，旧通知封不住。引用任一已撤回证据的当前包（含经回退间接引用）立即不可读，其余包照常供应。回退只在上一套快照全套可供应时成功，且从不丢失历史最高发布号与已接收通知。门店只保留当前与上一套快照，全部状态单文件原子提交；8MB 上限、重复键/非有限数拒绝、路径不得重合、拒绝符号链接与退出 2 的约定与 v1 一致。
+
+完整合成验收（同一条获准 fr 译文回退供给两个 fr-CA 包、第三包独立；装第二版后收到撤回通知；只改无关项的增量装不上、改到重新获准证据的增量装得上；同一次发布内删键加键；回退后再装旧发布号被拒；通知重复与冲突、错基线、损坏增量）可离线运行：
+
+```sh
+.venv/bin/python examples/delivery_demo.py
+```

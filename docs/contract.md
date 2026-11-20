@@ -94,3 +94,47 @@ Validation order is strict: the workspace, the frozen package and the response (
 
 The CLI enforces the v1 safety conventions: the 8MB read cap on every input, duplicate JSON key and non-finite number rejection, failure exit 2, and symlink refusal for write targets. The input paths of one invocation must be pairwise distinct, the generated workspace must remain readable under the same 8MB cap, and receive may only replace in place the workspace file it read (it writes no other path).
 
+# Offline release delivery contract v6
+
+locale-bundle-delivery moves reviewed releases from headquarters to stores that may be offline for weeks. Headquarters builds one self-contained snapshot per release (build) and diffs two snapshots into one delta file (delta). A store keeps its whole state in one local JSON file and exposes init, install, notice, rollback, status and fetch. The v1 message/placeholder rules, the v2 fact-log rules and the v3 component-graph rules are reused unchanged; delivery never touches the network, the vendor workspace or the dispatch ledger, and the v1-v5 commands are unchanged.
+
+## Snapshot and build --source INPUT --output SNAPSHOT --query QID --release N
+
+The input fields are exactly the v2 history fields plus components and applications, with the v4 adjustment that component keys must exist among the source-fact keys. The selected query must exist and see at least one source revision; only its at and known_seq compute current source revisions and review states. release is a positive integer.
+
+A snapshot is {version, release, query_id, at, known_seq, default_locale, packages, snapshot_id} with version the integer 1. One package per (application_id, locale) over every application and every requested locale, sorted by identity; each package is {application_id, locale, messages}. The package's keys are the application's v3 closure keys restricted to keys whose source revision is visible at the cutoff: a declared key that is not yet in effect is simply not packaged. Each key resolves along the v1 fallback chain under the v2 approval rules (only translations approved within the same query exist; an approved empty string is present and blocks fallback), yielding messages sorted by key of {key, value, variables, source_locale, source_id, translation_id, review_seq}. source_id is always the current source revision. A non-default supply keeps the exact translation_id and review_seq of the approving review; a default-locale supply carries null for both.
+
+snapshot_id is the SHA-256 of the canonical JSON (sort_keys=True, separators (",", ":"), UTF-8, allow_nan=False) of {release, default_locale, packages}: the release number, the default locale, every package identity and every key's message together with its supply evidence determine the release identity, so equivalent reorderings of facts, component lists, roots or JSON object fields never change it. A snapshot file validates only when its snapshot_id matches its content, so any store can verify a release identity offline.
+
+## Delta and delta --baseline BASE --target TARGET --output DELTA
+
+A delta is {version, target_release, baseline_id, target_id, target_header, packages_removed, packages_added, packages_changed, delta_id}. baseline_id and target_id are the two snapshots' snapshot_id values, target_release is the target's release number, and target_header carries the target's query_id, at, known_seq and default_locale so the store can rebuild a complete snapshot. One delta covers every package of the release: packages_removed lists {application_id, locale} rows, packages_added lists whole packages, and packages_changed lists {application_id, locale, keys_removed, keys_upserted} rows with full message objects for added or changed keys. A message whose text survived an evidence change is still an upsert; an unchanged message and its identical evidence are never retransmitted. The three package lists are pairwise disjoint, every list is sorted, keys_removed and keys_upserted never name the same key, and an empty change is not allowed. delta_id is the SHA-256 of the canonical JSON of the other seven fields; a delta file validates only when the seal matches, which is the integrity check.
+
+## Store file
+
+The store is one JSON object {version, current, previous, highest_release, notices} with version the integer 1. current is a snapshot, previous is the rollback candidate snapshot or null, highest_release is a positive integer no smaller than current's release and strictly greater than the candidate's release when one is retained, and notices is the accepted withdrawal notices sorted by id. The store keeps only these two snapshots: no headquarters release archive and no original facts are retained. Every successful mutation validates the next state completely and then replaces this one file atomically, so a committed state never has new packages readable while the notice or version records lag behind.
+
+## init --store STORE --snapshot SNAPSHOT
+
+The first delivery is a complete snapshot. init refuses to overwrite an existing store file; otherwise it validates the snapshot and creates the store with current set to it, previous null, no notices, and highest_release equal to its release number.
+
+## install --store STORE --delta DELTA
+
+A normal install uses the current snapshot as the exact baseline: the delta's baseline_id must equal the current snapshot_id (a stopped, unreadable current snapshot is still a valid baseline) and target_release must be strictly greater than highest_release. The store applies the changes, requiring every removed package or key to exist and every added package to be new, rebuilds the target snapshot and checks its identity against target_id. The restored target must be fully servable: no package may reference withdrawn evidence, including unchanged entries inherited from the baseline. Only when integrity, baseline, release number, restored identity and the withdrawal constraint all pass does the store switch atomically: previous becomes the old current, current becomes the rebuilt target and highest_release becomes target_release. An inapplicable old delta therefore cannot overwrite another batch's install, and after a failed install status reports the current identity so headquarters knows from which version to rebuild a delta.
+
+## notice --store STORE --notice NOTICE
+
+A notice is {version, notice_id, withdrawn} with version the integer 1 and withdrawn a set of exact approvals {translation_id, review_seq}. Notices are independent of delta files: they may arrive before or after the releases they affect, in any order, and may name evidence nothing has installed. Once accepted, the evidence stays blocked forever; a re-approval arrives under a different review_seq, which an old notice never blocks. Receiving the same notice_id with the identical set is a no-op that leaves the file untouched; the same id with a different set rejects the whole receipt. Acceptance takes effect immediately on reads, even when no safe substitute exists yet; the store never deletes individual keys in place, rewrites a snapshot's identity or recomputes fallback on its own.
+
+## rollback --store STORE
+
+Rollback restores the retained previous snapshot, but only when every one of its packages is free of withdrawn evidence; otherwise the command fails and the readable packages stay exactly as they were. On success the old current is retired, the rollback slot is cleared, and the highest release number and all accepted notices are kept. Rollback never lowers highest_release, so a release number once installed cannot be installed again.
+
+## status --store STORE and fetch --store STORE --application-id APP --locale LOCALE
+
+status prints the current identity (snapshot_id and release), the rollback candidate identity or null, highest_release, whether rollback is currently allowed, the accepted notices, and for every current package whether it is readable plus the exact blocking evidence. A package is unreadable when any of its messages references withdrawn evidence, including evidence it only uses through fallback. fetch prints one current package as {application_id, locale, messages}; an unknown package or a withdrawn package exits 2.
+
+## Safety conventions
+
+Every input file is read under the 8MB cap with duplicate JSON keys and non-finite numbers rejected. All validation finishes before any write; writes are atomic replacements, refuse symlink targets, and the store, snapshot and delta files a command produces must stay within the same 8MB cap. The paths of one invocation must be pairwise distinct; install, notice and rollback only replace in place the store file they read. Corrupt files, integrity or identity mismatches and refused business changes exit 2 and preserve the original state and every existing output.
+
