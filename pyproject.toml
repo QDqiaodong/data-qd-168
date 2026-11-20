@@ -14,5 +14,6 @@ locale-bundle-release = "locale_bundle.release_cli:main"
 locale-bundle-work-queue = "locale_bundle.workqueue_cli:main"
 locale-bundle-vendor = "locale_bundle.vendor_cli:main"
 locale-bundle-delivery = "locale_bundle.delivery_cli:main"
+locale-bundle-settlement = "locale_bundle.settlement_cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]

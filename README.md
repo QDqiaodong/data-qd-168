@@ -118,3 +118,25 @@ uv pip check --python .venv/bin/python
 ```sh
 .venv/bin/python examples/delivery_demo.py
 ```
+
+## 离线用量对账与结算
+
+`locale-bundle-settlement` 按门店实际渲染的发布快照逐月与供应商结算，契约详见 [数据契约](docs/contract.md) 的 v7 部分。五个子命令：`init`（登记门店及启用计数日期，创建账簿）、`import`（随计数同批登记新 v6 快照与计费约定）、`reconcile`（指定月份的逐日实时对账）、`close`（按顺序封存一个服务月份）、`bill`（读回已封账单）。全部状态存于单个 JSON 账簿，一次导入或封账要么整体提交要么不动；不改动 v1-v6 任何行为。
+
+```sh
+.venv/bin/locale-bundle-settlement init --books run/books.json --stores run/stores.json
+.venv/bin/locale-bundle-settlement import --books run/books.json --batch run/batch1.json
+.venv/bin/locale-bundle-settlement reconcile --books run/books.json --month 2026-05
+.venv/bin/locale-bundle-settlement close --books run/books.json --month 2026-05
+.venv/bin/locale-bundle-settlement bill --books run/books.json --month 2026-05
+```
+
+语义：门店在某个 UTC 零点上传完整累计向量（维度为 `(snapshot_id, application_id, locale, key)`，正整数修订号，未列维度为零）。同一零点以已接受的最高修订号为准；按原修订号重传等价向量不新增事实，同修订号换内容拒绝整批，未见的低修订留作原始收件但不取代高修订。批次合并后各门店当前向量沿时间逐维度不得倒退（跨漏报同样检查），一次可联动更正多个零点，以整批最终结果为准。计费归属按快照内 `(application_id, locale, key)` 的实际供稿：fr-CA 由 fr 供稿时按该 fr 的批准 `(translation_id, review_seq)` 对应约定计费，空译文照常，默认语言供稿只记用量不计费；登记后约定不得改价改供应商，新批准独立定价。
+
+对账以营业日为单位：只有相邻两个零点都有当前向量才以向量之差认定当天用量，跨天累计差不证明中间任何一天完整，不补零、不分摊。封账从最早启用月起依次进行，允许带缺报封账但只承认完整日；封账时重算截至该月的各服务月份，本月服务首次入账，更早月份的差额以调账/冲减记在本期账单上并标出原服务月份，已入账差额不重复记。账单连同当时使用的收件区间、完整日、缺口与钉住的修订一起冻结，迟到或更正的计数只改变实时对账，只能通过以后的封账改变已入账总额；已封月份再次封账直接返回原账单，跳月封账失败。追溯某个服务月份 = 读它的原账单，再加上此后各账单上以它为服务月的调账/冲减条目。
+
+完整合成验收（5 月 30 日启用、累计值 10/14/20 而 6 月 1 日先漏传；五月封账只确认 10 次；补报 14 后实时可见五月 +4、六月 +6；封六月前更正为 16，六月账单为五月补入 6 次、六月入账 4 次；再以更高修订改回 14，七月账单冲减五月 2 次、补入六月 2 次，原账单不变；同一营业日跨两个快照按实际批准与费率分开计数，含回退、默认供稿与重新获准）可离线运行：
+
+```sh
+.venv/bin/python examples/settlement_demo.py
+```
