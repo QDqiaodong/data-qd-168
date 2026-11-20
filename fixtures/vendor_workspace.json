@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "default_locale": "en",
+  "locales": [
+    "de",
+    "ja"
+  ],
+  "sources": [
+    {
+      "key": "key_a",
+      "source_revision": "a1",
+      "reuse_context": "ui/button",
+      "value": "Save {name}",
+      "variables": {
+        "name": "string"
+      }
+    },
+    {
+      "key": "key_b",
+      "source_revision": "b1",
+      "reuse_context": "ui/button",
+      "value": "Save {name}",
+      "variables": {
+        "name": "string"
+      }
+    },
+    {
+      "key": "key_c",
+      "source_revision": "c1",
+      "reuse_context": "ui/button",
+      "value": "Save {name}",
+      "variables": {
+        "name": "string"
+      }
+    },
+    {
+      "key": "key_other",
+      "source_revision": "o1",
+      "reuse_context": "ui/zz-other",
+      "value": "Save {name}",
+      "variables": {
+        "name": "string"
+      }
+    },
+    {
+      "key": "key_plain",
+      "source_revision": "p1",
+      "reuse_context": "ui/plain",
+      "value": "Done",
+      "variables": {}
+    },
+    {
+      "key": "key_slots",
+      "source_revision": "k1",
+      "reuse_context": "ui/slots",
+      "value": "Use {x} and {x} again with {{brace}} {count}",
+      "variables": {
+        "x": "string",
+        "count": "integer"
+      }
+    }
+  ],
+  "drafts": [
+    {
+      "locale": "de",
+      "key": "key_b",
+      "revision": 1,
+      "message": {
+        "value": "Alt {name}",
+        "variables": {
+          "name": "string"
+        }
+      }
+    }
+  ],
+  "receipts": []
+}

@@ -75,3 +75,24 @@ uv pip check --python .venv/bin/python
 ```sh
 .venv/bin/python examples/workqueue_demo.py
 ```
+
+## 离线供应商交接
+
+`locale-bundle-vendor` 的 `prepare`/`receive` 两个子命令实现离线供应商送译与回件，字段、版本与重放口径见 [数据契约](docs/contract.md) 的 v5 部分。回件只进入本地草稿（drafts），不会成为获准译文，也不改变任何已有发布包；v1-v4 命令行为不变。
+
+```sh
+.venv/bin/locale-bundle-vendor prepare --workspace run/ws.json --selection sel.json --package run/pkg.json
+# 只把 request 交给供应商，local 关联资料留在本地：
+.venv/bin/python -c "import json,sys; json.dump(json.load(open('run/pkg.json'))['request'], open('run/request.json','w'), ensure_ascii=False, indent=2)"
+.venv/bin/locale-bundle-vendor receive --workspace run/ws.json --package run/pkg.json --response run/resp.json
+```
+
+工作文件是单一 JSON（`version/default_locale/locales/sources/drafts/receipts`），草稿与收件记录同文件原子提交。源按 key 唯一；草稿按 `(locale,key)` 唯一，无行即版本 0，显式行版本为正整数，撤稿写 null 并保留行，每次保存或撤稿递增版本。`prepare` 按目标语言、语境、完整源模板和变量类型表四者相同才合并成一组，相同文案但 `reuse_context` 不同则单独成组；请求只含 `group_id`、目标语言、语境、变量槽位和 text/slot 片段，不含 key 清单、本地修订、草稿或收件记录。每个变量出现（含重复变量）分配不同槽位，源模板双花括号按字面文本送出。`batch_id` 是组和全部成员所冻结源修订、草稿版本的内容哈希，选择行顺序或 JSON 键顺序变化不改变包；`prepare` 不修改工作文件。
+
+`receive` 允许分批、乱序、重复回件：每个原槽位必须恰好出现一次（可换序），无槽位组可回空片段表示有效空译文；供应商文字一律按字面处理，花括号在还原模板时转义，因此不会被解释成新变量，还原结果可用原 `render` 渲染。逐成员按 `out_of_scope → source_changed → draft_changed → applied` 的固定优先级判定，同组冲突成员互不阻塞；applied 才写草稿并把版本加一（即使文字与旧草稿相同）。每个首次收到的组都留收件记录（即使全员跳过）；按原包重放完全相同的有序片段时返回原结果、不重判、不增记录、不改文件；同组返回不同片段则整次调用失败（退出 2）。重叠批次各自按成员版本判断，先写入者推进版本，迟到的旧回件只能得到 `draft_changed`，无法覆盖。未知组、批次不符、关联资料不一致、损坏记录、非法片段都是整操作错误，草稿与收件记录不会部分写入。8MB 上限、重复键/非有限数拒绝、路径不得重合、拒绝符号链接写目标和退出 2 的约定与 v1 一致；`receive` 只允许原地替换它读入的工作文件。
+
+可离线复现的完整场景（同语境三键共组、回件前源修订变更与草稿保存后撤稿、异语境单独成组、重复变量换序夹字面花括号、分组回件与重放、重叠批次旧回件不覆盖、好回复与坏组同批无部分写入）：
+
+```sh
+.venv/bin/python examples/vendor_demo.py
+```
