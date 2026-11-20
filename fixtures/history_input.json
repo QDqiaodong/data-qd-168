@@ -1,0 +1,29 @@
+{
+  "default_locale": "en",
+  "locales": ["en", "fr", "fr-CA"],
+  "fallback": {
+    "fr-CA": "fr"
+  },
+  "requested": ["fr-CA"],
+  "sources": [
+    {"id": "s1", "seq": 1, "effective": 0, "key": "g", "value": "Hello {name}", "variables": {"name": "string"}},
+    {"id": "s2", "seq": 4, "effective": 10, "key": "g", "value": "Hi {name}", "variables": {"name": "string"}}
+  ],
+  "translations": [
+    {"id": "t1", "seq": 2, "effective": 0, "locale": "fr", "key": "g", "source_id": "s1", "value": "Bonjour {name}", "variables": {"name": "string"}},
+    {"id": "t2", "seq": 5, "effective": 10, "locale": "fr", "key": "g", "source_id": "s2", "value": "Salut {name}", "variables": {"name": "string"}}
+  ],
+  "reviews": [
+    {"seq": 3, "effective": 0, "translation_id": "t1", "approved": true},
+    {"seq": 6, "effective": 10, "translation_id": "t2", "approved": true},
+    {"seq": 7, "effective": 12, "translation_id": "t2", "approved": false}
+  ],
+  "queries": [
+    {"id": "q1", "at": 10, "known_seq": 3},
+    {"id": "q2", "at": 10, "known_seq": 4},
+    {"id": "q3", "at": 10, "known_seq": 5},
+    {"id": "q4", "at": 10, "known_seq": 6},
+    {"id": "q5", "at": 12, "known_seq": 7},
+    {"id": "q6", "at": 10, "known_seq": 7}
+  ]
+}
