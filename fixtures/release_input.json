@@ -1,0 +1,113 @@
+{
+  "default_locale": "en",
+  "fallback": {
+    "fr-CA": "fr"
+  },
+  "catalogs": {
+    "en": {
+      "greeting": {
+        "value": "Hello {name}",
+        "variables": {
+          "name": "string"
+        }
+      },
+      "cart": {
+        "value": "Items: {count}",
+        "variables": {
+          "count": "integer"
+        }
+      },
+      "button": {
+        "value": "Buy",
+        "variables": {}
+      },
+      "key-x": {
+        "value": "Shared key",
+        "variables": {}
+      },
+      "settings": {
+        "value": "Settings",
+        "variables": {}
+      }
+    },
+    "fr": {
+      "greeting": {
+        "value": "Bonjour {name}",
+        "variables": {
+          "name": "string"
+        }
+      },
+      "button": {
+        "value": "Acheter",
+        "variables": {}
+      },
+      "key-x": {
+        "value": "Clé partagée",
+        "variables": {}
+      }
+    },
+    "fr-CA": {
+      "cart": {
+        "value": "Articles : {count}",
+        "variables": {
+          "count": "integer"
+        }
+      }
+    }
+  },
+  "requested": [
+    "en",
+    "fr-CA"
+  ],
+  "components": [
+    {
+      "id": "checkout",
+      "requires": [
+        "shared"
+      ],
+      "keys": [
+        "greeting",
+        "button"
+      ]
+    },
+    {
+      "id": "catalog",
+      "requires": [
+        "shared"
+      ],
+      "keys": [
+        "cart",
+        "button"
+      ]
+    },
+    {
+      "id": "shared",
+      "requires": [],
+      "keys": [
+        "key-x"
+      ]
+    },
+    {
+      "id": "admin",
+      "requires": [],
+      "keys": [
+        "settings"
+      ]
+    }
+  ],
+  "applications": [
+    {
+      "id": "app-a",
+      "roots": [
+        "checkout",
+        "catalog"
+      ]
+    },
+    {
+      "id": "app-b",
+      "roots": [
+        "admin"
+      ]
+    }
+  ]
+}

@@ -2,3 +2,4 @@
 
 - input.json：v1 资源编译样例（en/fr/fr-CA 问候与购物车文案）。
 - history_input.json：v2 审核历史样例（g 键的 en 源修订 s1→s2、fr 译文 t1→t2、批准与撤销，及六个联动查询）。
+- release_input.json：v3 发布包样例（共享 shared 组件的菱形依赖，应用 app-a 依赖 checkout/catalog，app-b 仅依赖 admin）。

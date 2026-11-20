@@ -3,22 +3,26 @@ from .common import fields, text, array
 from .messages import validate_message
 
 
-def compile_bundle(data):
-    fields(data, 'default_locale fallback catalogs requested')
-    default = text(data['default_locale'])
-    if not isinstance(data['catalogs'], dict) or not 1 <= len(data['catalogs']) <= 100:
+def catalog_context(default_value, fallback_value, catalogs_value, requested_value):
+    """Validate the shared locale/message input and derive resolution chains.
+
+    Returns (default, catalogs, chains, requested). This is the v1 contract
+    reused by the release compiler so both commands validate identically.
+    """
+    default = text(default_value)
+    if not isinstance(catalogs_value, dict) or not 1 <= len(catalogs_value) <= 100:
         raise ValueError('bounded locale catalogs required')
     catalogs = {}
-    for locale, messages in data['catalogs'].items():
+    for locale, messages in catalogs_value.items():
         text(locale)
         if not isinstance(messages, dict) or len(messages) > 10000:
             raise ValueError('bounded message object required')
-        catalogs[locale] = {text(key):validate_message(row) for key,row in messages.items()}
+        catalogs[locale] = {text(key): validate_message(row) for key, row in messages.items()}
     if default not in catalogs or not catalogs[default]:
         raise ValueError('nonempty default catalog required')
-    if not isinstance(data['fallback'], dict):
+    if not isinstance(fallback_value, dict):
         raise ValueError('fallback map required')
-    fallback = data['fallback']
+    fallback = fallback_value
     for locale, parent in fallback.items():
         if locale not in catalogs or parent not in catalogs or locale == default:
             raise ValueError('invalid fallback edge')
@@ -38,15 +42,28 @@ def compile_bundle(data):
         for key, row in messages.items():
             if row['variables'] != catalogs[default][key]['variables']:
                 raise ValueError('translation variable types differ')
-    requested = [text(x) for x in array(data['requested'],100)]
+    requested = [text(x) for x in array(requested_value, 100)]
     if not requested or len(set(requested)) != len(requested) or set(requested) - set(catalogs):
         raise ValueError('requested locales must be known and unique')
+    return default, catalogs, chains, requested
+
+
+def resolve_key(catalogs, chains, locale, key):
+    """Resolve one key along the locale's fallback chain."""
+    source = next(parent for parent in chains[locale] if key in catalogs[parent])
+    return source, {**catalogs[source][key], 'source_locale': source}
+
+
+def compile_bundle(data):
+    fields(data, 'default_locale fallback catalogs requested')
+    default, catalogs, chains, requested = catalog_context(
+        data['default_locale'], data['fallback'], data['catalogs'], data['requested'])
     resolved, missing = {}, []
     for locale in requested:
         resolved[locale] = {}
         for key in sorted(catalogs[default]):
-            source = next(parent for parent in chains[locale] if key in catalogs[parent])
-            resolved[locale][key] = {**catalogs[source][key], 'source_locale':source}
+            source, message = resolve_key(catalogs, chains, locale, key)
+            resolved[locale][key] = message
             if source != locale:
-                missing.append({'locale':locale,'key':key,'source_locale':source})
-    return {'default_locale':default,'catalogs':resolved,'fallback_messages':missing}
+                missing.append({'locale': locale, 'key': key, 'source_locale': source})
+    return {'default_locale': default, 'catalogs': resolved, 'fallback_messages': missing}

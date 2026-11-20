@@ -41,3 +41,15 @@ uv pip check --python .venv/bin/python
 设计：事实只追加、校验一次；每个查询从按 key / (locale,key) / translation_id 建立的事实索引中，用纯谓词 `effective<=at 且 seq<=known_seq` 过滤后取 `(effective,seq)` 最大者，独立推导当前源修订、当前译文与审核状态，再沿单父回退链编译。不维护跨查询的物化派生状态。维护代价：迟到事实只是新行，无需拆分或重写任何生效区间；撤销就是普通的 `approved=false` 行，由"最新可见审核"规则自然生效；源版本失效按查询即时比较 `source_id` 得出，没有需要回填的批准矩阵；旧 `known_seq` 截止永远可重放。代价是每查询 O(事实数) 扫描（上限 100 查询 × 10000 事实）。备选方案"版本化生效区间"可让单查询更快，但每条迟到事实都要分裂区间并使已派生状态失效，撤销与旧截止重放的维护成本更高；两种方案必须产出相同结果，本实现选择逐查询推导。
 
 单操作者本地批处理；不承诺并发发布或断电恢复。代码/样例采用MIT许可。
+
+## 按应用依赖闭包发布
+
+`compile_release_bundles(data)` 与 `locale-bundle-release` 为共享组件仓中的每个应用生成自包含发布包，契约详见 [数据契约](docs/contract.md) 的 v3 部分。
+
+```sh
+.venv/bin/locale-bundle-release --source fixtures/release_input.json --output run/release.json
+```
+
+预期：`app-a`（根组件 checkout、catalog 共同依赖 shared）仅含 greeting/button/cart/key-x；key-x 在 fr-CA 下从 fr 解析一次，source_locale 为 fr，included_by 仅 shared，且仅一条回退诊断。`app-b`（根组件 admin）只含 settings，不含 key-x，其 fr-CA 从 en 回退。
+
+语义：应用包键集合 = 各根组件 `requires` 的传递闭包内所有组件声明的键并集；多路径到达或跨应用共享的组件与键在单个应用内只计一次，但一个应用的键不会泄漏到另一个应用的包。每个键仍按 v1 单父链逐键解析并记录 source_locale，回退诊断只覆盖该应用实际包含的键；每个消息与诊断都带 included_by，即闭包内直接声明该键的组件 id（去重排序）。组件依赖图必须无环，所有 id、依赖、根与键引用必须有效，组件的键必须存在于默认 catalog。全部输入和全部应用/语言包验证构建成功后才原子替换输出；失败退出 2 并保留旧输出，8MB 上限、重复 JSON 键/非有限数拒绝、输入输出区分与符号链接拒绝均与 v1 相同。

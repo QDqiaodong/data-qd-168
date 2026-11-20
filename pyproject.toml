@@ -10,5 +10,6 @@ dependencies = []
 [project.scripts]
 locale-bundle = "locale_bundle.cli:main"
 locale-bundle-history = "locale_bundle.history_cli:main"
+locale-bundle-release = "locale_bundle.release_cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
